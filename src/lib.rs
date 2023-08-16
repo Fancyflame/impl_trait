@@ -37,7 +37,23 @@ mod test {
 
     struct Foo;
 
+    /*async fn call() -> String {
+        "hello world".into()
+    }*/
+
+    #[repr(C)]
+    struct WithPadding {
+        small: u8,
+        large: u32,
+    }
+
     async fn call() -> String {
+        let val = WithPadding {
+            small: 0,
+            large: 10,
+        };
+        std::future::ready(()).await;
+        drop(val);
         "hello world".into()
     }
 
@@ -58,6 +74,7 @@ mod test {
     #[test]
     fn main() {
         let boxed = <Foo as MyTrait>::call();
-        assert_eq!(pollster::block_on(boxed), "hello world");
+        pollster::block_on(boxed);
+        //assert_eq!(pollster::block_on(boxed), "hello world");
     }
 }

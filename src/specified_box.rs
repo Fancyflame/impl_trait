@@ -2,7 +2,7 @@ use std::{
     alloc::Layout,
     fmt::Debug,
     future::Future,
-    mem::ManuallyDrop,
+    mem::{ManuallyDrop, MaybeUninit},
     ops::{Deref, DerefMut},
     slice,
 };
@@ -15,7 +15,7 @@ where
     T: ?Sized,
 {
     buffer: B,
-    destructor: unsafe fn(&mut [u8]),
+    destructor: unsafe fn(*mut ()),
     as_ref: unsafe fn(*const ()) -> *const T,
     as_mut: unsafe fn(*mut ()) -> *mut T,
 }
@@ -33,16 +33,16 @@ where
         assert_eq!(layout, B::LAYOUT);
 
         let value = ManuallyDrop::new(value);
-        let byte_ptr = &*value as *const U as *const u8;
+        let byte_ptr = &*value as *const U as *const MaybeUninit<u8>;
         let mut buffer = B::default();
 
         unsafe {
             let bytes = slice::from_raw_parts(byte_ptr, layout.size());
-            buffer.get_buffer_mut()[..layout.size()].copy_from_slice(bytes);
+            buffer.get_buffer_mut().copy_from_slice(bytes);
             Self {
                 buffer,
-                destructor: |buffer: &mut [u8]| {
-                    ManuallyDrop::drop(&mut *(buffer as *mut [u8] as *mut ManuallyDrop<U>))
+                destructor: |buffer: *mut ()| {
+                    ManuallyDrop::drop(&mut *(buffer as *mut ManuallyDrop<U>))
                 },
                 as_ref: |ptr| (&*(ptr as *const U)).coerce(),
                 as_mut: |ptr| (&mut *(ptr as *mut U)).coerce_mut(),
@@ -58,7 +58,7 @@ where
 {
     type Target = T;
     fn deref(&self) -> &Self::Target {
-        unsafe { &*(self.as_ref)(self.buffer.get_buffer() as *const [u8] as _) }
+        unsafe { &*(self.as_ref)(self.buffer.get_buffer() as *const [MaybeUninit<u8>] as _) }
     }
 }
 
@@ -68,7 +68,7 @@ where
     T: ?Sized,
 {
     fn deref_mut(&mut self) -> &mut Self::Target {
-        unsafe { &mut *(self.as_mut)(self.buffer.get_buffer_mut() as *mut [u8] as _) }
+        unsafe { &mut *(self.as_mut)(self.buffer.get_buffer_mut() as *mut [MaybeUninit<u8>] as _) }
     }
 }
 
@@ -79,7 +79,7 @@ where
 {
     fn drop(&mut self) {
         unsafe {
-            (self.destructor)(self.buffer.get_buffer_mut());
+            (self.destructor)(self.buffer.get_buffer_mut() as *mut [MaybeUninit<u8>] as *mut ());
         }
     }
 }

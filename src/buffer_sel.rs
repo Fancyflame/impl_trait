@@ -1,4 +1,4 @@
-use std::alloc::Layout;
+use std::{alloc::Layout, mem::MaybeUninit};
 
 pub trait BufferSelector<const REPR: usize, const SIZE: usize> {
     type Align;
@@ -6,19 +6,19 @@ pub trait BufferSelector<const REPR: usize, const SIZE: usize> {
 
 pub unsafe trait AlignedBuffer: Default + Unpin {
     const LAYOUT: Layout;
-    fn get_buffer(&self) -> &[u8];
-    fn get_buffer_mut(&mut self) -> &mut [u8];
+    fn get_buffer(&self) -> &[MaybeUninit<u8>];
+    fn get_buffer_mut(&mut self) -> &mut [MaybeUninit<u8>];
 }
 
 macro_rules! align_n {
     ($($AlignN:ident $align:literal,)*) => {
         $(
             #[repr(align($align))]
-            pub struct $AlignN<const SIZE: usize>([u8; SIZE]);
+            pub struct $AlignN<const SIZE: usize>([MaybeUninit<u8>; SIZE]);
 
             impl<const SIZE: usize> Default for $AlignN<SIZE> {
                 fn default() -> Self {
-                    Self([0u8; SIZE])
+                    Self([MaybeUninit::uninit(); SIZE])
                 }
             }
 
@@ -31,11 +31,11 @@ macro_rules! align_n {
                     Layout::from_size_align_unchecked(SIZE, $align)
                 };
 
-                fn get_buffer(&self) -> &[u8] {
+                fn get_buffer(&self) -> &[MaybeUninit<u8>] {
                     &self.0
                 }
 
-                fn get_buffer_mut(&mut self) -> &mut [u8] {
+                fn get_buffer_mut(&mut self) -> &mut [MaybeUninit<u8>] {
                     &mut self.0
                 }
             }
